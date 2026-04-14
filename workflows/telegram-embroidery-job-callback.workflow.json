@@ -1,0 +1,651 @@
+{
+  "name": "Telegram Embroidery Job Orchestration",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {
+          "download": true
+        }
+      },
+      "id": "8d1fd241-a0c3-4306-8728-f0dfdbe1ce21",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -940,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const update = $json;\nconst message = update.message || update.edited_message || update.channel_post || {};\nconst chat = message.chat || {};\nconst from = message.from || {};\nconst document = message.document || {};\nconst text = (message.text || '').trim();\nconst binary = $binary || {};\nconst binaryFile = binary.data || {};\nconst fileName = document.file_name || binaryFile.fileName || '';\nconst mimeType = document.mime_type || binaryFile.mimeType || '';\nconst lowerFileName = fileName.toLowerCase();\nconst isSvgDocument = Boolean(document.file_id) && (lowerFileName.endsWith('.svg') || mimeType === 'image/svg+xml');\nlet route = 'unsupported';\nif (text === '/start' || text.startsWith('/start ')) route = 'start_help';\nif (text === '/help' || text.startsWith('/help ')) route = 'start_help';\nif (isSvgDocument) route = 'svg_file';\nreturn [{\n  json: {\n    update_id: update.update_id,\n    message_id: message.message_id,\n    chat_id: chat.id ? String(chat.id) : '',\n    user_id: from.id ? String(from.id) : '',\n    username: from.username || '',\n    route,\n    text,\n    file_id: document.file_id || '',\n    file_name: fileName,\n    mime_type: mimeType,\n    source: 'telegram',\n    received_at: new Date().toISOString()\n  },\n  binary\n}];"
+      },
+      "id": "1b7f3614-f789-4887-9b4f-93852b78d80e",
+      "name": "Normalize Telegram Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d5eacb15-d1ee-4e7c-9291-dfce05a2b6b8",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "start_help",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8f3c028f-9a08-4c41-bded-01cb4f02f3a6",
+      "name": "Is Start Or Help",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -480,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "Send an SVG file to start embroidery processing.\n\nCommands:\n/start - Start\n/help - Show help",
+        "replyMarkup": "none"
+      },
+      "id": "51fefb26-3b34-49c1-876e-c1483d4177c8",
+      "name": "Send Help Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bf56e476-d1c9-4989-9613-910ef5750278",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "svg_file",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1f7e8a13-1b48-44f0-8999-7823f5673398",
+      "name": "Is SVG File Upload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "Please send an SVG file, or use /help.",
+        "replyMarkup": "none"
+      },
+      "id": "015009cd-d6a9-42f2-9ea8-e6df86caa141",
+      "name": "Send Unsupported Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        20,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "Your file was received.",
+        "replyMarkup": "none"
+      },
+      "id": "c4fd16dc-44b8-4aae-97a9-34210c8cf1ff",
+      "name": "Send File Received",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        20,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.BACKEND_API_BASE_URL || 'http://host.docker.internal:8000') + '/jobs' }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "parameterType": "formData",
+              "name": "source",
+              "value": "telegram"
+            },
+            {
+              "parameterType": "formData",
+              "name": "telegram_chat_id",
+              "value": "={{ $json.chat_id }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "telegram_user_id",
+              "value": "={{ $json.user_id }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "original_filename",
+              "value": "={{ $json.file_name }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "callback_url",
+              "value": "={{ $execution.resumeUrl }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "28c1bd77-a0e7-4669-a393-5bba3440bdb0",
+      "name": "Create Backend Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        20,
+        220
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Normalize Telegram Message').first().json;\nconst body = $json.body || $json;\nconst detail = body.detail;\nconst detailText = Array.isArray(detail) ? 'The backend rejected the uploaded file.' : (detail || body.safe_error || body.error || '');\nconst jobId = body.job_id || '';\nreturn [{\n  json: {\n    ...original,\n    job_id: jobId,\n    status: body.status || (jobId ? 'queued' : 'failed'),\n    download_url: body.download_url || '',\n    file_name: body.file_name || body.output_filename || '',\n    safe_error: jobId ? '' : (detailText || 'The backend did not accept the job.'),\n    backend_create_response: body\n  }\n}];"
+      },
+      "id": "6b20a417-bc29-4d49-b872-0533574c54ac",
+      "name": "Normalize Job Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bf9250ca-47af-4c95-ae7c-e412d5df84ac",
+              "leftValue": "={{ $json.job_id || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6e15fe84-4c66-4b5e-9102-f3ce952ab867",
+      "name": "Was Job Created",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ 'Processing started. Job ID: ' + $json.job_id }}",
+        "replyMarkup": "none"
+      },
+      "id": "ff4517bd-5d29-4a5b-86c7-e5a1ac72d2ef",
+      "name": "Send Processing Started",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        760,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "responseData": "noData",
+        "options": {}
+      },
+      "id": "2e2f5496-210a-4de3-908f-73dca5f8cf67",
+      "name": "Wait For Backend Callback",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ 'Processing failed. Reason: ' + ($json.safe_error || 'The backend could not create the job.') }}",
+        "replyMarkup": "none"
+      },
+      "id": "47c35bd1-7484-497b-bbe6-c11b8f614596",
+      "name": "Send Job Create Failure",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        760,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ ($env.BACKEND_API_BASE_URL || 'http://host.docker.internal:8000') + '/jobs/' + (($json.body && $json.body.job_id) || $json.job_id || $('Normalize Job Response').first().json.job_id) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "b47126fe-761d-454d-b2d7-eed8e5a343f4",
+      "name": "Get Final Job Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        240
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const created = $('Normalize Job Response').first().json;\nconst body = $json.body || $json;\nlet status = String(body.status || created.status || '').toLowerCase();\nif (['complete', 'completed', 'done', 'success', 'succeeded'].includes(status)) status = 'completed';\nif (['failed', 'error', 'errored', 'cancelled', 'canceled'].includes(status)) status = 'failed';\nconst detail = body.detail;\nconst safeError = Array.isArray(detail) ? 'The backend rejected the job status request.' : (body.safe_error || body.error_message || body.error || detail || created.safe_error || 'The backend reported a processing error.');\nreturn [{\n  json: {\n    ...created,\n    status,\n    download_url: body.download_url || created.download_url || '',\n    file_name: body.file_name || body.output_filename || created.file_name || '',\n    safe_error: status === 'failed' ? safeError : '',\n    backend_status_response: body\n  }\n}];"
+      },
+      "id": "1e86b841-1f63-4a36-81d9-4e293ba6b506",
+      "name": "Normalize Final Job Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f9803dfe-554d-4f59-80b6-8b6d487b5734",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cc154d4c-11c5-4c9a-bfef-326d0ea52571",
+      "name": "Is Job Complete",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1500,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.download_url ? 'Your file is ready. Download it here: ' + $json.download_url : 'Your file is ready. Job ID: ' + $json.job_id }}",
+        "replyMarkup": "none"
+      },
+      "id": "0f6906d1-4052-4e94-bca3-a723140ca2c9",
+      "name": "Send Completion Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1740,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b3b27aae-0c47-4dd2-b291-b52e0a969d52",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "failed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ee9effc3-57d9-49ea-b7b6-2b9e5d8a47de",
+      "name": "Is Job Failed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1740,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ 'Processing failed. Reason: ' + ($json.safe_error || 'The job could not be completed.') }}",
+        "replyMarkup": "none"
+      },
+      "id": "d8c4d383-6a3b-4461-9a92-13e27ce5f9a6",
+      "name": "Send Failure Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1980,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ 'Processing status: ' + ($json.status || 'unknown') + '. Job ID: ' + $json.job_id }}",
+        "replyMarkup": "none"
+      },
+      "id": "e6466b75-8732-4738-bdaf-bbb215691ea1",
+      "name": "Send Nonterminal Status",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1980,
+        460
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Is Start Or Help",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Start Or Help": {
+      "main": [
+        [
+          {
+            "node": "Send Help Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is SVG File Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is SVG File Upload": {
+      "main": [
+        [
+          {
+            "node": "Send File Received",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Backend Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Unsupported Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Backend Job": {
+      "main": [
+        [
+          {
+            "node": "Normalize Job Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Job Response": {
+      "main": [
+        [
+          {
+            "node": "Was Job Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was Job Created": {
+      "main": [
+        [
+          {
+            "node": "Send Processing Started",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait For Backend Callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Job Create Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait For Backend Callback": {
+      "main": [
+        [
+          {
+            "node": "Get Final Job Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Final Job Status": {
+      "main": [
+        [
+          {
+            "node": "Normalize Final Job Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Final Job Status": {
+      "main": [
+        [
+          {
+            "node": "Is Job Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Job Complete": {
+      "main": [
+        [
+          {
+            "node": "Send Completion Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Job Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Job Failed": {
+      "main": [
+        [
+          {
+            "node": "Send Failure Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Nonterminal Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5c7568d1-49d2-49b3-9942-c30e5bb3f9eb",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "telegram-embroidery-job-orchestration",
+  "tags": []
+}
