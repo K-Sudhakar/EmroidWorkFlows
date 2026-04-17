@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const update = $json;\nconst message = update.message || update.edited_message || update.channel_post || {};\nconst chat = message.chat || {};\nconst from = message.from || {};\nconst document = message.document || {};\nconst text = (message.text || '').trim();\nconst binary = $binary || {};\nconst binaryFile = binary.data || {};\nconst fileName = document.file_name || binaryFile.fileName || '';\nconst mimeType = document.mime_type || binaryFile.mimeType || '';\nconst lowerFileName = fileName.toLowerCase();\nconst isSvgDocument = Boolean(document.file_id) && (lowerFileName.endsWith('.svg') || mimeType === 'image/svg+xml');\nlet route = 'unsupported';\nif (text === '/start' || text.startsWith('/start ')) route = 'start_help';\nif (text === '/help' || text.startsWith('/help ')) route = 'start_help';\nif (isSvgDocument) route = 'svg_file';\nreturn [{\n  json: {\n    update_id: update.update_id,\n    message_id: message.message_id,\n    chat_id: chat.id ? String(chat.id) : '',\n    user_id: from.id ? String(from.id) : '',\n    username: from.username || '',\n    route,\n    text,\n    file_id: document.file_id || '',\n    file_name: fileName,\n    mime_type: mimeType,\n    source: 'telegram',\n    received_at: new Date().toISOString()\n  },\n  binary\n}];"
+        "jsCode": "const backendApiBaseUrl = 'http://72.60.97.242:8000/';\nconst publicN8nBaseUrl = 'https://n8n.paxgeek.com/';\nconst update = $json;\nconst message = update.message || update.edited_message || update.channel_post || {};\nconst chat = message.chat || {};\nconst from = message.from || {};\nconst document = message.document || {};\nconst text = (message.text || '').trim();\nconst binary = $binary || {};\nconst binaryFile = binary.data || {};\nconst fileName = document.file_name || binaryFile.fileName || '';\nconst mimeType = document.mime_type || binaryFile.mimeType || '';\nconst lowerFileName = fileName.toLowerCase();\nconst isSvgDocument = Boolean(document.file_id) && (lowerFileName.endsWith('.svg') || mimeType === 'image/svg+xml');\nlet route = 'unsupported';\nif (text === '/start' || text.startsWith('/start ')) route = 'start_help';\nif (text === '/help' || text.startsWith('/help ')) route = 'start_help';\nif (isSvgDocument) route = 'svg_file';\nreturn [{\n  json: {\n    update_id: update.update_id,\n    message_id: message.message_id,\n    chat_id: chat.id ? String(chat.id) : '',\n    user_id: from.id ? String(from.id) : '',\n    username: from.username || '',\n    route,\n    text,\n    file_id: document.file_id || '',\n    file_name: fileName,\n    mime_type: mimeType,\n    source: 'telegram',\n    received_at: new Date().toISOString(),\n    config: {\n      backend_api_base_url: backendApiBaseUrl.replace(/\\/$/, ''),\n      public_n8n_base_url: publicN8nBaseUrl.replace(/\\/$/, '')\n    }\n  },\n  binary\n}];"
       },
       "id": "1b7f3614-f789-4887-9b4f-93852b78d80e",
       "name": "Normalize Telegram Message",
@@ -152,7 +152,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ ($env.BACKEND_API_BASE_URL || 'http://host.docker.internal:8000') + '/jobs' }}",
+        "url": "={{ $json.config.backend_api_base_url + '/jobs' }}",
         "sendBody": true,
         "contentType": "multipart-form-data",
         "bodyParameters": {
@@ -185,7 +185,7 @@
             {
               "parameterType": "formData",
               "name": "callback_url",
-              "value": "={{ $execution.resumeUrl }}"
+              "value": "={{ $execution.resumeUrl.replace(/^https?:\\/\\/[^/]+/, $json.config.public_n8n_base_url) }}"
             }
           ]
         },
@@ -277,6 +277,10 @@
         "httpMethod": "POST",
         "responseMode": "onReceived",
         "responseData": "noData",
+        "limitWaitTime": true,
+        "limitType": "afterTimeInterval",
+        "resumeAmount": 30,
+        "resumeUnit": "seconds",
         "options": {}
       },
       "id": "2e2f5496-210a-4de3-908f-73dca5f8cf67",
@@ -307,7 +311,7 @@
     },
     {
       "parameters": {
-        "url": "={{ ($env.BACKEND_API_BASE_URL || 'http://host.docker.internal:8000') + '/jobs/' + (($json.body && $json.body.job_id) || $json.job_id || $('Normalize Job Response').first().json.job_id) }}",
+        "url": "={{ $('Normalize Telegram Message').first().json.config.backend_api_base_url + '/jobs/' + (($json.body && $json.body.job_id) || $json.job_id || $('Normalize Job Response').first().json.job_id) }}",
         "options": {
           "response": {
             "response": {

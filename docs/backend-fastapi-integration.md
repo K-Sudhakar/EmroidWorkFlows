@@ -106,6 +106,8 @@ Body:
 
 n8n will use this callback only to resume the workflow. It then calls `GET /jobs/{job_id}` to fetch the final canonical status and download URL from FastAPI.
 
+The n8n wait node has a 30-second fallback timeout. If the callback is missed, n8n still resumes and polls `GET /jobs/{job_id}` once. The callback should still be implemented because it gives faster Telegram completion messages and avoids unnecessary waiting.
+
 ## FastAPI Shape
 
 The exact implementation depends on the existing backend queue, but the endpoint shape should look like this:

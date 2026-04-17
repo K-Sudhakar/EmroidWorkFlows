@@ -7,6 +7,7 @@ The integration is intentionally thin:
 - Telegram is the user interaction channel.
 - n8n handles orchestration, status messages, file handoff, and backend callbacks.
 - FastAPI owns SVG validation, job processing, Ink/Stitch or Inkscape execution, output storage, and download authorization.
+- The workflow waits for the backend callback, with a 30-second fallback status check if the callback is missed.
 
 ## Deliverables
 
@@ -52,29 +53,29 @@ See `docs/backend-fastapi-integration.md` for the full contract and callback beh
    - `POST /jobs` accepts the form-data contract.
    - `GET /jobs/{job_id}` returns canonical job status.
    - the worker calls `callback_url` on job completion or failure.
-3. Start n8n with:
+3. Start n8n with a public webhook URL:
 
 ```bash
-BACKEND_API_BASE_URL=http://host.docker.internal:8000
 WEBHOOK_URL=https://your-public-n8n-url.example.com/
 ```
 
 4. Import `workflows/telegram-embroidery-job-callback.workflow.json`.
 5. Select your Telegram credential on every Telegram node.
-6. Activate the workflow.
-7. In Telegram, send `/start`.
-8. Send an SVG document to the bot.
-9. Confirm the bot sends:
+6. Open `Normalize Telegram Message` and set `backendApiBaseUrl` to your FastAPI base URL and `publicN8nBaseUrl` to the public n8n URL that FastAPI can call.
+7. Activate the workflow.
+8. In Telegram, send `/start`.
+9. Send an SVG document to the bot.
+10. Confirm the bot sends:
    - `Your file was received.`
    - `Processing started. Job ID: <job_id>`
    - `Your file is ready. Download it here: <link>` or a safe failure reason.
 
 ## Local Development Notes
 
-If n8n is in Docker and FastAPI runs on the host, use:
+If n8n is in Docker and FastAPI runs on the host, set `backendApiBaseUrl` in the `Normalize Telegram Message` node to:
 
 ```bash
-BACKEND_API_BASE_URL=http://host.docker.internal:8000
+http://host.docker.internal:8000
 ```
 
 Telegram and backend callbacks need public HTTPS endpoints. Use a tunnel such as ngrok or Cloudflare Tunnel for:

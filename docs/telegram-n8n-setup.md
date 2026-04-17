@@ -44,23 +44,25 @@ Do not commit the Telegram token to the repository.
    - `Send Completion Message`
    - `Send Failure Message`
    - `Send Nonterminal Status`
-5. Set the backend base URL through the n8n environment variable `BACKEND_API_BASE_URL`.
+5. Open `Normalize Telegram Message` and set:
+   - `backendApiBaseUrl` to your FastAPI base URL.
+   - `publicN8nBaseUrl` to the public n8n URL that the backend can call.
 
 Recommended local value when n8n is running in Docker and FastAPI is running on the host:
 
-```bash
-BACKEND_API_BASE_URL=http://host.docker.internal:8000
-```
+`http://host.docker.internal:8000`
 
 Recommended local value when both run directly on the same host:
 
-```bash
-BACKEND_API_BASE_URL=http://127.0.0.1:8000
-```
+`http://127.0.0.1:8000`
+
+The workflow intentionally does not use `$env.BACKEND_API_BASE_URL`, because some n8n deployments block expression access to environment variables.
 
 ## n8n Webhook URL
 
 The workflow uses a callback URL from the n8n `Wait For Backend Callback` node. For FastAPI to call it, n8n must know its externally reachable base URL.
+
+The wait node also has a 30-second fallback timeout. If the backend callback is missed, the workflow resumes after 30 seconds and calls `GET /jobs/{job_id}`. This keeps Telegram updates moving even when the callback path is misconfigured.
 
 For hosted n8n, set:
 
@@ -76,18 +78,39 @@ WEBHOOK_URL=https://your-tunnel.example.com/
 
 FastAPI must be able to reach this URL from wherever the backend worker runs.
 
+If the workflow remains stuck on `Wait For Backend Callback`, check:
+
+- FastAPI is storing the exact `callback_url` value received from `POST /jobs`.
+- The worker calls `POST {callback_url}` after persisting `completed` or `failed`.
+- `WEBHOOK_URL` points to the public n8n URL, not `localhost`.
+- Firewalls, tunnels, or reverse proxies allow inbound calls to n8n.
+- The n8n execution is still active and has not been pruned.
+
 ## Backend API Base URL
 
-Set `BACKEND_API_BASE_URL` in the n8n runtime, not inside the workflow JSON.
+Set `backendApiBaseUrl` in the `Normalize Telegram Message` node.
 
 Examples:
 
-```bash
-BACKEND_API_BASE_URL=http://host.docker.internal:8000
-BACKEND_API_BASE_URL=https://api.example.com
-```
+`http://host.docker.internal:8000`
+
+`https://api.example.com`
 
 Do not include a trailing slash.
+
+## Public n8n Callback URL
+
+Set `publicN8nBaseUrl` in the `Normalize Telegram Message` node.
+
+Example when n8n is reachable directly on the VPS:
+
+`http://72.60.97.242:5678`
+
+Example when n8n is behind HTTPS:
+
+`https://n8n.example.com`
+
+The workflow uses this value to rewrite `$execution.resumeUrl` before sending `callback_url` to FastAPI. This allows the callback URL to be fixed from the workflow even when n8n's server-level `WEBHOOK_URL` is missing or wrong.
 
 ## FastAPI Callback Requirement
 
